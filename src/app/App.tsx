@@ -125,7 +125,9 @@ function getColombianHolidays(year: number): Holiday[] {
 
 // ── Vacation optimizer ───────────────────────────────────────────────────────
 
-function computeOpportunities(year: number, maxVac: number, holidays: Holiday[]): VacOpp[] {
+const MAX_BRIDGE_DAYS = 20; // maximum vacation days to consider for any bridge
+
+function computeOpportunities(year: number, holidays: Holiday[]): VacOpp[] {
   const hSet = new Set(holidays.map((h) => h.date));
   const isOff = (d: Date) => isWeekend(d) || hSet.has(mkDateStr(d));
 
@@ -160,7 +162,7 @@ function computeOpportunities(year: number, maxVac: number, holidays: Holiday[])
       if (blocks[j].type === "work") {
         totalWork += blocks[j].count;
         totalDays += blocks[j].count;
-        if (totalWork > maxVac) break;
+        if (totalWork > MAX_BRIDGE_DAYS) break;
       } else {
         totalDays += blocks[j].count;
         if (totalWork > 0) {
@@ -186,14 +188,13 @@ function computeOpportunities(year: number, maxVac: number, holidays: Holiday[])
     }
   }
 
-  return opps
-    .sort((a, b) => b.efficiency - a.efficiency || b.totalDays - a.totalDays)
-    .slice(0, 18);
+  return opps.sort((a, b) => b.efficiency - a.efficiency || b.totalDays - a.totalDays);
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const CURRENT_YEAR = new Date().getFullYear();
+const TODAY_STR = mkDateStr(new Date());
 
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -293,10 +294,25 @@ export default function App() {
 
   const holidays = useMemo(() => getColombianHolidays(year), [year]);
   const holidaySet = useMemo(() => new Set(holidays.map((h) => h.date)), [holidays]);
-  const opportunities = useMemo(
-    () => computeOpportunities(year, vacDays, holidays),
-    [year, vacDays, holidays]
+  const allOpportunities = useMemo(
+    () => computeOpportunities(year, holidays),
+    [year, holidays]
   );
+
+  const opportunities = useMemo(() => {
+    const cutoff = year === CURRENT_YEAR ? TODAY_STR : `${year}-01-01`;
+    return allOpportunities
+      .filter((o) => o.endDate >= cutoff && o.vacationDays <= vacDays)
+      .sort((a, b) => {
+        // Prefer opportunities that use days closest to the selected budget,
+        // then break ties by total days off (more = better).
+        const aDiff = Math.abs(a.vacationDays - vacDays);
+        const bDiff = Math.abs(b.vacationDays - vacDays);
+        if (aDiff !== bDiff) return aDiff - bDiff;
+        return b.totalDays - a.totalDays;
+      })
+      .slice(0, 18);
+  }, [allOpportunities, vacDays, year]);
 
   const highlighted = selectedOpp
     ? { start: selectedOpp.startDate, end: selectedOpp.endDate }
