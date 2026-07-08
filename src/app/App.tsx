@@ -12,6 +12,7 @@ interface Holiday {
 interface VacOpp {
   startDate: string;
   endDate: string;
+  firstWorkDay: string;
   vacationDays: number;
   totalDays: number;
   efficiency: number;
@@ -172,10 +173,15 @@ function computeOpportunities(year: number, holidays: Holiday[]): VacOpp[] {
             const windowHolidays = holidays
               .filter((h) => h.date >= blocks[i].start && h.date <= blocks[j].end)
               .map((h) => h.name);
+            // First work day is the start of the first work block after the left anchor
+            const firstWorkDay = blocks[i + 1]?.type === "work"
+              ? blocks[i + 1].start
+              : blocks[i + 2]?.start ?? blocks[i + 1].start;
             if (windowHolidays.length > 0) {
               opps.push({
                 startDate: blocks[i].start,
                 endDate: blocks[j].end,
+                firstWorkDay,
                 vacationDays: totalWork,
                 totalDays,
                 efficiency: totalDays / totalWork,
@@ -302,7 +308,7 @@ export default function App() {
   const opportunities = useMemo(() => {
     const cutoff = year === CURRENT_YEAR ? TODAY_STR : `${year}-01-01`;
     return allOpportunities
-      .filter((o) => o.endDate >= cutoff && o.vacationDays <= vacDays)
+      .filter((o) => o.firstWorkDay >= cutoff && o.vacationDays <= vacDays)
       .sort((a, b) => {
         // Prefer opportunities that use days closest to the selected budget,
         // then break ties by total days off (more = better).
